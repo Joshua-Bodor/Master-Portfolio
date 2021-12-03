@@ -1,0 +1,96 @@
+---
+title: "NLM2_Task_1_Report"
+output: html_document
+---
+
+```{r echo=FALSE}
+data <- read.csv('medical_time_series.csv')
+ts_data <- ts(data[, 2])
+
+ts_data.train <- ts_data[1:580]
+ts_data.test <- data[580:731, 2]
+ts_data.test <- ts(ts_data.test, start=580)
+
+diff_ts <- diff(ts_data)
+
+ts_data_months <- ts(data[, 2], start=1, frequency=30)
+decomposed_ts <- decompose(ts_data_months)
+```
+
+
+In order to properly forecast, or predict, revenue for the coming months, we must evaluate a large number of models to decide upon the proper parameters.
+
+
+```{r echo=FALSE}
+a <- c()
+b <- c()
+
+i <- 1
+for (p in 0:2) {
+  for (d in 0:1) {
+    for (q in 0:4) {
+      model <- arima(diff_ts, order=c(p,d,q))
+      a[i] <- AIC(model)
+      b[i] <- BIC(model)
+      print(paste('model', as.character(i), ' -- AIC: ', round(a[i], 2), 
+                  ' BIC: ', round(b[i], 2), ' Params: ', p, d, q, sep=''))
+      i <- i+1
+    }
+  }
+}
+```
+
+
+We see that there is a wide variety of scores present and we want the lowest possible score for both the AIC and BIC metrics.
+
+
+```{r echo=FALSE}
+print(paste('Lowest AIC:', min(a), sep= ' '))
+print(paste('Lowest BIC:', min(b), sep= ' '))
+```
+
+
+By comparing these minimum values to our previous output, we see that model3 has the lowest AIC score and model11 has the lowest BIC score. Model3 represents a first-magnitude auto-regressive model with no moving average component. Model11 represents a second-magnitude moving average model with no auto-regressive component. Because both of these models appear to perform well, we will use a combination of both, represented by model13. Looking at the original output, we see that the AIC and BIC scores of model 13 are only slightly larger than those of model3 and model11 respectively.
+
+Next, we will use this selected model to predict the revenue of the next five months and compare it to the actual revenue for the last five months.
+
+```{r echo=FALSE}
+fin_model <- arima(ts_data.train, order = c(1,0,2))
+
+pred <- predict(fin_model, n.ahead=150)
+
+upper_bound <- pred$pred+2*pred$se
+lower_bound <- pred$pred-2*pred$se
+predictions <- pred$pred
+
+plot.ts(ts_data, main='Forecast of Revenue', ylab='Revenue (Millions of Dollars)', xlab='Time (Days)')
+lines(predictions, col='blue')
+lines(upper_bound, col='red')
+lines(lower_bound, col='red')
+lines(ts_data.test, col='purple')
+legend('topleft', 
+       legend=c('Training Data', 'Predictions', 'Error Boundaries', 'Test Data'),
+       col=c('black', 'blue', 'red', 'purple'),
+       pch=15
+       )
+```
+
+
+The graph above shows that the revenue is predicted to trend slightly downward. This conclusion is supported by the test data. Based on this prediction, we recommend accounting and executives develop a course of action to increase revenue or account for reduced revenue by lowering cost in kind.
+
+We will evaluate how well the model fits the data by calculating the Mean Squared Error.
+
+
+```{r echo=FALSE}
+print(paste('Test vs. Predictions MSE: ', mean((ts_data.test - pred$pred)^2), sep=''))
+
+ts.test.monthly <- ts(data[580:731, 2], start=580, frequency=30)
+decomposed.test <- decompose(ts.test.monthly)
+pred.monthly <- ts(pred$pred, start=580, frequency=30)
+print(paste('Trend vs. Predictions MSE: ', mean((na.omit(decomposed.test$trend) - na.omit(pred.monthly))^2), sep=''))
+```
+
+
+We see that the model fits the trend of the data better than the day-to-day shifts in revenue. This supports our earlier conclusion that revenue is steadily declining on average and countermeasures should be employed to address the decreased revenue by increasing future revenue or adjusting costs to account for decreased revenue.
+
+
